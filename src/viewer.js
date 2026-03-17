@@ -79,6 +79,38 @@ export function createViewer(container) {
   joints.frustumCulled = false
   trajectory.frustumCulled = false
 
+  const sillyHead = new THREE.Group()
+  sillyHead.frustumCulled = false
+
+  const headMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.08, 24, 24),
+    new THREE.MeshBasicMaterial({ color: COLORS.text }),
+  )
+
+  const eyeGeometry = new THREE.SphereGeometry(0.011, 14, 14)
+  const eyeMaterial = new THREE.MeshBasicMaterial({ color: COLORS.background })
+  const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial)
+  const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial)
+  leftEye.position.set(-0.028, 0.018, 0.087)
+  rightEye.position.set(0.028, 0.018, 0.087)
+
+  const mouthGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-0.03, -0.018, 0.088),
+    new THREE.Vector3(-0.022, -0.031, 0.088),
+    new THREE.Vector3(-0.01, -0.034, 0.088),
+    new THREE.Vector3(0, -0.022, 0.088),
+    new THREE.Vector3(0.01, -0.034, 0.088),
+    new THREE.Vector3(0.022, -0.031, 0.088),
+    new THREE.Vector3(0.03, -0.018, 0.088),
+  ])
+  const mouth = new THREE.Line(
+    mouthGeometry,
+    new THREE.LineBasicMaterial({ color: COLORS.background }),
+  )
+
+  sillyHead.add(headMesh, leftEye, rightEye, mouth)
+  scene.add(sillyHead)
+
   scene.add(skeletonLine, joints, trajectory)
 
   let animationFrameId = null
@@ -105,7 +137,7 @@ export function createViewer(container) {
   }
 
   function setFrame(framePose) {
-    const { positions, parents } = framePose
+    const { positions, parents, jointNames } = framePose
     const segmentVertices = []
     const jointVertices = []
 
@@ -136,6 +168,42 @@ export function createViewer(container) {
     skeletonGeometry.computeBoundingBox()
     jointGeometry.computeBoundingSphere()
     jointGeometry.computeBoundingBox()
+
+    const neckIndex = jointNames.indexOf('neck')
+    const headIndex = jointNames.indexOf('head')
+    const headTopIndex = jointNames.indexOf('head_top')
+    const leftShoulderIndex = jointNames.indexOf('left_shoulder')
+    const rightShoulderIndex = jointNames.indexOf('right_shoulder')
+
+    if (
+      neckIndex >= 0 &&
+      headIndex >= 0 &&
+      headTopIndex >= 0 &&
+      leftShoulderIndex >= 0 &&
+      rightShoulderIndex >= 0
+    ) {
+      const neck = positions[neckIndex]
+      const head = positions[headIndex]
+      const headTop = positions[headTopIndex]
+      const leftShoulder = positions[leftShoulderIndex]
+      const rightShoulder = positions[rightShoulderIndex]
+
+      const up = headTop.clone().sub(neck).normalize()
+      const side = leftShoulder.clone().sub(rightShoulder).normalize()
+      const forward = new THREE.Vector3().crossVectors(side, up).normalize()
+      const orthogonalSide = new THREE.Vector3().crossVectors(up, forward).normalize()
+
+      const basis = new THREE.Matrix4().makeBasis(orthogonalSide, up, forward)
+      sillyHead.quaternion.setFromRotationMatrix(basis)
+
+      const headHeight = headTop.distanceTo(neck)
+      const radius = Math.max(headHeight * 0.28, 0.055)
+      sillyHead.position.copy(head).lerp(headTop, 0.58).addScaledVector(up, radius * 0.18)
+      sillyHead.scale.setScalar(radius / 0.08)
+      sillyHead.visible = true
+    } else {
+      sillyHead.visible = false
+    }
   }
 
   function fitToPoints(points) {
@@ -176,6 +244,7 @@ export function createViewer(container) {
     jointGeometry.computeBoundingBox()
     trajectoryGeometry.computeBoundingSphere()
     trajectoryGeometry.computeBoundingBox()
+    sillyHead.visible = false
   }
 
   window.addEventListener('resize', resize)

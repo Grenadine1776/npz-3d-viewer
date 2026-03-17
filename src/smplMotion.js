@@ -76,6 +76,9 @@ const OFFSETS = [
   [-0.269, 0.004, -0.0132],
 ].map(([x, y, z]) => new THREE.Vector3(x, y, z))
 
+const HEAD_INDEX = JOINT_NAMES.indexOf('head')
+const HEAD_TOP_OFFSET = new THREE.Vector3(0, 0.11, 0)
+
 function axisAngleToQuaternion(x, y, z) {
   const quaternion = new THREE.Quaternion()
   const angle = Math.hypot(x, y, z)
@@ -165,10 +168,24 @@ export function getFramePose(motion, frameIndex) {
       .add(worldPositions[parent])
   }
 
+  const displayJointNames = [...jointNames]
+  const displayParents = [...parents]
+  const displayPositions = [...worldPositions]
+
+  // The FBX/SMPL-family head joint sits near the base of the skull.
+  // Add a synthetic head-top endpoint so the skeleton reads clearly in preview.
+  const headTopPosition = HEAD_TOP_OFFSET.clone()
+    .applyQuaternion(worldRotations[HEAD_INDEX])
+    .add(worldPositions[HEAD_INDEX])
+
+  displayJointNames.push('head_top')
+  displayParents.push(HEAD_INDEX)
+  displayPositions.push(headTopPosition)
+
   return {
-    jointNames,
-    parents,
-    positions: worldPositions,
+    jointNames: displayJointNames,
+    parents: displayParents,
+    positions: displayPositions,
   }
 }
 
