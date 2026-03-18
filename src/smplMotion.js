@@ -79,6 +79,90 @@ const OFFSETS = [
 const HEAD_INDEX = JOINT_NAMES.indexOf('head')
 const HEAD_TOP_OFFSET = new THREE.Vector3(0, 0.11, 0)
 
+const POSED_JOINT_NAMES = [
+  'pelvis',
+  'spine1',
+  'spine2',
+  'neck',
+  'head_base',
+  'head_mid',
+  'head',
+  'head_top',
+  'head_left',
+  'head_right',
+  'right_shoulder',
+  'right_upper_arm',
+  'right_elbow',
+  'right_wrist',
+  'right_hand',
+  'right_hand_tip',
+  'left_shoulder',
+  'left_upper_arm',
+  'left_elbow',
+  'left_wrist',
+  'left_hand',
+  'left_hand_tip',
+  'right_hip',
+  'right_knee',
+  'right_ankle',
+  'right_foot',
+  'left_hip',
+  'left_knee',
+  'left_ankle',
+  'left_foot',
+]
+
+const POSED_JOINT_PARENTS = [
+  -1,
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  7,
+  3,
+  10,
+  11,
+  12,
+  13,
+  14,
+  3,
+  16,
+  17,
+  18,
+  19,
+  20,
+  0,
+  22,
+  23,
+  24,
+  0,
+  26,
+  27,
+  28,
+]
+
+function getFrameMatrix(arrayInfo, frameIndex) {
+  if (arrayInfo.shape.length !== 3) {
+    throw new Error('Frame matrix access expects a 3D array')
+  }
+
+  const [, rows, cols] = arrayInfo.shape
+  const frameSize = rows * cols
+  const start = frameIndex * frameSize
+  const slice = arrayInfo.data.slice(start, start + frameSize)
+  const matrix = []
+
+  for (let row = 0; row < rows; row += 1) {
+    matrix.push(slice.slice(row * cols, (row + 1) * cols))
+  }
+
+  return matrix
+}
+
 function axisAngleToQuaternion(x, y, z) {
   const quaternion = new THREE.Quaternion()
   const angle = Math.hypot(x, y, z)
@@ -92,6 +176,27 @@ function axisAngleToQuaternion(x, y, z) {
 }
 
 export function createMotion(npzData) {
+  if (npzData.posed_joints) {
+    const posedJoints = npzData.posed_joints
+
+    if (
+      posedJoints.shape.length !== 3 ||
+      posedJoints.shape[1] !== 30 ||
+      posedJoints.shape[2] !== 3
+    ) {
+      throw new Error('Expected "posed_joints" to be shaped [frames, 30, 3]')
+    }
+
+    return {
+      format: 'posed_joints',
+      frameCount: posedJoints.shape[0],
+      fps: 30,
+      jointNames: POSED_JOINT_NAMES,
+      parents: POSED_JOINT_PARENTS,
+      npzData,
+    }
+  }
+
   const poses = npzData.poses
   const trans = npzData.trans
   const rootRotation = npzData.Rh
@@ -121,6 +226,7 @@ export function createMotion(npzData) {
   }
 
   return {
+    format: 'smpl_family',
     frameCount: poses.shape[0],
     fps: 30,
     jointNames: JOINT_NAMES,
@@ -131,6 +237,17 @@ export function createMotion(npzData) {
 
 export function getTrajectoryPoints(motion) {
   const points = []
+  if (motion.format === 'posed_joints') {
+    const posedJoints = motion.npzData.posed_joints
+
+    for (let frame = 0; frame < motion.frameCount; frame += 1) {
+      const joints = getFrameMatrix(posedJoints, frame)
+      points.push(new THREE.Vector3(joints[0][0], joints[0][1], joints[0][2]))
+    }
+
+    return points
+  }
+
   const trans = motion.npzData.trans
 
   for (let frame = 0; frame < motion.frameCount; frame += 1) {
@@ -142,6 +259,16 @@ export function getTrajectoryPoints(motion) {
 }
 
 export function getFramePose(motion, frameIndex) {
+  if (motion.format === 'posed_joints') {
+    const joints = getFrameMatrix(motion.npzData.posed_joints, frameIndex)
+
+    return {
+      jointNames: motion.jointNames,
+      parents: motion.parents,
+      positions: joints.map(([x, y, z]) => new THREE.Vector3(x, y, z)),
+    }
+  }
+
   const { npzData, jointNames, parents } = motion
   const poses = getRow(npzData.poses, frameIndex)
   const translation = getRow(npzData.trans, frameIndex)

@@ -75,6 +75,10 @@ function parseNumericArray(buffer, byteOffset, count, descr) {
     return new Uint32Array(buffer, byteOffset, count)
   }
 
+  if (kind === 'b' && bytesPerItem === 1) {
+    return Array.from(new Uint8Array(buffer, byteOffset, count), (value) => value !== 0)
+  }
+
   throw new Error(`Unsupported dtype "${descr}"`)
 }
 
